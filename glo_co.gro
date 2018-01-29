@@ -25,23 +25,29 @@
 //////////////////////////////////////////////////////////////////////////////
 include gro
 
-chemostat(false);
-set ( "chemostat_width", 500 );
-set ( "chemostat_height", 500 );
+chemostat(true);
+set ( "chemostat_width", 400 );
+set ( "chemostat_height", 400 );
 set_theme ( dark_theme );
 //set( "dt", 0.002);
 
 // Initialize the simulation parameters
 kdif := 10;      // signal diffusion rate
 dS := 0.05;   // signal degradation rate
-kS := 1.0;
-kS0 := 3.0;    // signal emission rate
-kS1 := 3.0;    // signal emission rate; change for different ratio ref
-dC := 0.05;   // cell death rate;
-k_on := 1; // ccda and ccdb annihilate each other with a really big rate.
+kS := 3.0;    // signal emission rate (use as reference for total population cap)
+kS0 := 3.0;    // signal emission rate (use as reference for relative ratio)
+kS1 := 3.0;    // signal emission rate (use as reference for relative ratio)
+dC := 0.01;   // cell death rate; Figure 6 shows the parameter variation simulations of k4.
+k_on := 1; // gp2 and RNAp annihilate each other with a really big rate.
 
-//kdif := 5;      // slower signal diffusion rate
+//kdif := 2;      // slower signal diffusion rate
 
+
+gG := 1.0; // growth-related chemical basal production
+//kG := 0.4; // growth-related chemical maximal production
+
+gD := 0.0; // RNA antisense gp2 basal production
+kD := 0.5; // RNA antisense gp2 maximal production
 
 gT := 0.0; // Toxin ccdB basal production
 kT := 0.4; // Toxin ccdB maximal production
@@ -49,22 +55,24 @@ kT := 0.4; // Toxin ccdB maximal production
 gA := 0.0; // Antitoxin ccdA basal production
 kA := 0.4; // Antitoxin ccdA maximal production
 
-
 // Define a signal molecule
 ahl := signal( kdif, dS );
 ahl0 := signal( kdif, dS );
 ahl1 := signal( kdif, dS );
 
-red_total := 10; //cell population
+red_total := 10;
 green_total := 50;
 
-// Green cell dynamics
 program rk0() := {
   gfp := 100*volume;
-	ccdb := 0;
-  ccda := 0;
+  G := 100;
+  D := 0;
+  ccdb :=0;
+  ccda :=0;
+  set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
 
   just_divided : {
+      set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
       green_total := green_total + 0.5;
   };
 
@@ -74,7 +82,27 @@ program rk0() := {
     gfp := 100*volume;
   };
 
-  // ccdB production induced by its own AHL.
+  // growth-related chemical production.
+  rate( gG) : {
+    //absorb_signal( ahl0, 1);
+    G := G + 1;		      	// cell death
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+  //Production of RNA antisense gp2.
+  rate( gD + kD * get_signal( ahl) ) : {
+    //absorb_signal( ahl1, 1);
+    D := D + 1;           // make gp2
+  };
+
+  //Sequestering elimination of growth-related chemical and gp2
+  rate( k_on *G/volume* D / volume) : {
+    G := G - 1;
+    D := D - 1;
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+ // ccdB production induced by your own AHL.
   rate( gT + kT * get_signal( ahl0) ) : {
     //absorb_signal( ahl0, 1);
     ccdb := ccdb + 1;		      	// cell death
@@ -93,7 +121,7 @@ program rk0() := {
   };
 
 
-  // Amount of ccdB kills the cell.
+ // Amount of ccdB kills the cell.
   rate( dC * ccdb/volume ) : {
     die();
     green_total := green_total - 1;
@@ -101,24 +129,48 @@ program rk0() := {
 
 };
 
-// Red cell dynamics
 program rk1() := {
   rfp := 100*volume;
-  ccdb := 0;
-  ccda := 0;
+  G := 100;
+  D := 0;
+  ccdb :=0;
+  ccda :=0;
+  
+  set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
 
   just_divided : {
+      set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
       red_total := red_total + 0.5;
   };
 
-
   true  : {
-    emit_signal( ahl, kS * dt ); // signal is emitted at every dt interval
-    emit_signal( ahl1, kS1 * dt );
+    emit_signal( ahl, kS * dt );	// signal is emitted at every dt interval
+    emit_signal( ahl1, kS1 * dt);
     rfp := 100*volume;
   };
 
-  // ccdB production induced by its  own AHL.
+  // growth-related chemical production.
+  rate( gG) : {
+    //absorb_signal( ahl, 1);
+    G := G + 1;		      	// cell death
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+  //Production of RNA antisense gp2.
+  rate( gD + kD * get_signal( ahl) ) : {
+    //absorb_signal( ahl0, 1);
+    D := D + 1;           // make gp2
+  };
+
+  //Sequestering elimination of growth-related chemical and gp2
+  rate( k_on *G/volume* D / volume) : {
+    G := G - 1;
+    D := D - 1;
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+
+   // ccdB production induced by both the global AHL and your own AHL.
   rate( gT + kT * get_signal( ahl1) ) : {
     //absorb_signal( ahl1, 1);
     ccdb := ccdb + 1;           // cell death
@@ -142,27 +194,35 @@ program rk1() := {
     red_total := red_total-1;
   };
 
-};
 
+};
 
 
 program main() := {
 
+//snapshot ( "/Users/cindy/Dropbox/Caltech Study/Research/gro/movie_glo_co/gloco000.tif" );
+
+
 t := 0;
-n:= 0;
+n := 0;
+s := 0;
+sn :=0;
 
 true : {
 t := t + dt;
 n := n + 1;
+s := s + dt;
 };
 
 (n = 100): {
   n := 0;
-  print("time=",t , "red=," , red_total , "green=," , green_total, "r+g,", red_total + green_total);
+  fprint(fp, t , "," , red_total , "," , green_total, ",", red_total + green_total,"\n");
+  print(t , "," , red_total , "," , green_total, ",", red_total + green_total,"\n");
 }
 
-
-
+t >500:{
+  stop();
+}
 
 };
 
@@ -170,12 +230,12 @@ n := n + 1;
 
 foreach q in range 10 do
 
-ecoli( [x := rand(300) - 200, y := rand(300) - 200, theta := rand(360) ], program rk1() )
+ecoli( [x := rand(300) - 150, y := rand(300) - 150, theta := rand(360) ], program rk1() )
 
 end;
 
 foreach q in range 50 do
 
-ecoli( [x := rand(300) - 200, y := rand(300) - 200, theta  := rand(360) ], program rk0() )
+ecoli( [x := rand(300) - 150, y := rand(300) - 150, theta  := rand(360) ], program rk0() )
 
 end;
