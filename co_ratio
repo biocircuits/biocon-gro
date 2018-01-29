@@ -1,0 +1,181 @@
+////////////////////////////////////////////////////////////////////////////
+//
+//   gro
+//
+//   Copyright (c) 2011-2012 Eric Klavins, University of Washington
+//   For more information, email klavins@uw.edu
+//
+//   This program is free software; you can redistribute it and/or
+//   modify it under the terms of the GNU General Public License
+//   as published by the Free Software Foundation; either version 2
+//   of the License, or (at your option) any later version.
+//
+//   This program is distributed in the hope that it will be useful,
+//   but WITHOUT ANY WARRANTY; without even the implied warranty of
+//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//   GNU General Public License for more details.
+//
+//   You should have received a copy of the GNU General Public License
+//   along with this program; if not, write to the Free Software
+//   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+//
+//
+
+
+//////////////////////////////////////////////////////////////////////////////
+include gro
+
+chemostat(false);
+set ( "chemostat_width", 500 );
+set ( "chemostat_height", 500 );
+set_theme ( dark_theme );
+//set( "dt", 0.002);
+
+// Initialize the simulation parameters
+kdif := 10;      // signal diffusion rate
+dS := 0.05;   // signal degradation rate
+kS := 1.0;
+kS0 := 3.0;    // signal emission rate
+kS1 := 3.0;    // signal emission rate; change for different ratio ref
+dC := 0.05;   // cell death rate;
+k_on := 1; // ccda and ccdb annihilate each other with a really big rate.
+
+//kdif := 5;      // slower signal diffusion rate
+
+
+gT := 0.0; // Toxin ccdB basal production
+kT := 0.4; // Toxin ccdB maximal production
+
+gA := 0.0; // Antitoxin ccdA basal production
+kA := 0.4; // Antitoxin ccdA maximal production
+
+
+// Define a signal molecule
+ahl := signal( kdif, dS );
+ahl0 := signal( kdif, dS );
+ahl1 := signal( kdif, dS );
+
+red_total := 10; //cell population
+green_total := 50;
+
+// Green cell dynamics
+program rk0() := {
+  gfp := 100*volume;
+	ccdb := 0;
+  ccda := 0;
+
+  just_divided : {
+      green_total := green_total + 0.5;
+  };
+
+  true  : {
+    emit_signal( ahl, kS * dt );	// signal is emitted at every dt interval
+    emit_signal( ahl0, kS0 * dt);
+    gfp := 100*volume;
+  };
+
+  // ccdB production induced by its own AHL.
+  rate( gT + kT * get_signal( ahl0) ) : {
+    //absorb_signal( ahl0, 1);
+    ccdb := ccdb + 1;		      	// cell death
+  };
+
+  //Production of antidote protein.
+  rate( gA + kA * get_signal( ahl1) ) : {
+    //absorb_signal( ahl1, 1);
+    ccda := ccda + 1;           // make ccda
+  };
+
+  //Sequestering elimination of ccda and ccdb
+  rate( k_on * ccda/volume* ccdb / volume) : {
+    ccda := ccda - 1;
+    ccdb := ccdb - 1;
+  };
+
+
+  // Amount of ccdB kills the cell.
+  rate( dC * ccdb/volume ) : {
+    die();
+    green_total := green_total - 1;
+  };
+
+};
+
+// Red cell dynamics
+program rk1() := {
+  rfp := 100*volume;
+  ccdb := 0;
+  ccda := 0;
+
+  just_divided : {
+      red_total := red_total + 0.5;
+  };
+
+
+  true  : {
+    emit_signal( ahl, kS * dt ); // signal is emitted at every dt interval
+    emit_signal( ahl1, kS1 * dt );
+    rfp := 100*volume;
+  };
+
+  // ccdB production induced by its  own AHL.
+  rate( gT + kT * get_signal( ahl1) ) : {
+    //absorb_signal( ahl1, 1);
+    ccdb := ccdb + 1;           // cell death
+  };
+
+  //Production of antidote protein.
+  rate( gA + kA * get_signal( ahl0) ) : {
+    //absorb_signal( ahl0, 1);
+    ccda := ccda + 1;           // make ccda
+  };
+
+  //Sequestering elimination of ccda and ccdb
+  rate( k_on * ccda/volume* ccdb / volume) : {
+    ccda := ccda - 1;
+    ccdb := ccdb - 1;
+  };
+
+  // Amount of ccdB kills the cell.
+  rate( dC * ccdb/volume ) : {
+    die();
+    red_total := red_total-1;
+  };
+
+};
+
+
+
+program main() := {
+
+t := 0;
+n:= 0;
+
+true : {
+t := t + dt;
+n := n + 1;
+};
+
+(n = 100): {
+  n := 0;
+  print("time=",t , "red=," , red_total , "green=," , green_total, "r+g,", red_total + green_total);
+}
+
+
+
+
+};
+
+
+
+foreach q in range 10 do
+
+ecoli( [x := rand(300) - 200, y := rand(300) - 200, theta := rand(360) ], program rk1() )
+
+end;
+
+foreach q in range 50 do
+
+ecoli( [x := rand(300) - 200, y := rand(300) - 200, theta  := rand(360) ], program rk0() )
+
+end;
