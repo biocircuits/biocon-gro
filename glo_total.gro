@@ -1,0 +1,196 @@
+////////////////////////////////////////////////////////////////////////////
+//
+//   gro
+//
+//   Copyright (c) 2011-2012 Eric Klavins, University of Washington
+//   For more information, email klavins@uw.edu
+//
+//   This program is free software; you can redistribute it and/or
+//   modify it under the terms of the GNU General Public License
+//   as published by the Free Software Foundation; either version 2
+//   of the License, or (at your option) any later version.
+//
+//   This program is distributed in the hope that it will be useful,
+//   but WITHOUT ANY WARRANTY; without even the implied warranty of
+//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//   GNU General Public License for more details.
+//
+//   You should have received a copy of the GNU General Public License
+//   along with this program; if not, write to the Free Software
+//   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+//
+//
+
+//////////////////////////////////////////////////////////////////////////////
+
+
+include gro
+
+
+chemostat(true);
+set ( "chemostat_width", 400 );
+set ( "chemostat_height", 400 );
+set_theme ( dark_theme );
+//set( "dt", 0.002);
+
+// Initialize the simulation parameters
+kdif := 10;      // signal diffusion rate
+dS := 0.05;   // signal degradation rate
+kS := 3.0;    // signal emission rate (use as reference for total population cap)
+//kS0 := 1.0;    // signal emission rate
+//kS1 := 1.0;    // signal emission rate
+dC := 0.01;   // cell death rate; Figure 6 shows the parameter variation simulations of k4.
+k_on := 1; // gp2 and RNAp annihilate each other with a really big rate.
+
+//kdif := 2;      // slower signal diffusion rate
+
+
+gG := 0.8; // growth-related chemical basal production (use as reference for total population cap)
+//kG := 0.4; // growth-related chemical maximal production
+
+gD := 0.0; // RNA antisense gp2 basal production
+kD := 0.5; // RNA antisense gp2 maximal production
+
+
+// Define a signal molecule
+ahl := signal( kdif, dS );
+//ahl0 := signal( kdif, dS );
+//ahl1 := signal( kdif, dS );
+
+red_total := 30;
+green_total := 30;
+
+program rk0() := {
+  gfp := 100*volume;
+  G := 100;
+  D := 0;
+  set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+
+  just_divided : {
+      set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+      green_total := green_total + 0.5;
+  };
+
+  true  : {
+    emit_signal( ahl, kS * dt );	// signal is emitted at every dt interval
+    //emit_signal( ahl0, kS0 * dt);
+    gfp := 100*volume;
+  };
+
+  // growth-related chemical production.
+  rate( gG) : {
+    //absorb_signal( ahl0, 1);
+    G := G + 1;		      	// cell death
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+  //Production of RNA antisense gp2.
+  rate( gD + kD * get_signal( ahl) ) : {
+    //absorb_signal( ahl1, 1);
+    D := D + 1;           // make gp2
+  };
+
+  //Sequestering elimination of growth-related chemical and gp2
+  rate( k_on *G/volume* D / volume) : {
+    G := G - 1;
+    D := D - 1;
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+
+  // Amount of natural kills the cell.
+  rate( dC  ) : {
+    die();
+    green_total := green_total - 1;
+  };
+
+};
+
+program rk1() := {
+  rfp := 100*volume;
+  G := 100;
+  D := 0;
+
+  set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+
+  just_divided : {
+      set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+      red_total := red_total + 0.5;
+  };
+
+  true  : {
+    emit_signal( ahl, kS * dt );	// signal is emitted at every dt interval
+    //emit_signal( ahl1, kS1 * dt);
+    rfp := 100*volume;
+  };
+
+  // growth-related chemical production.
+  rate( gG) : {
+    //absorb_signal( ahl, 1);
+    G := G + 1;		      	// cell death
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+  //Production of RNA antisense gp2.
+  rate( gD + kD * get_signal( ahl) ) : {
+    //absorb_signal( ahl0, 1);
+    D := D + 1;           // make gp2
+  };
+
+  //Sequestering elimination of growth-related chemical and gp2
+  rate( k_on *G/volume* D / volume) : {
+    G := G - 1;
+    D := D - 1;
+    set ( "ecoli_growth_rate", 0.0346574*G/100 );   // reactions/min
+  };
+
+
+  // Amount of natural kills the cell.
+  rate( dC  ) : {
+    die();
+    red_total := red_total - 1;
+  };
+
+
+};
+
+
+program main() := {
+
+t := 0;
+n := 0;
+s := 0;
+sn :=0;
+
+true : {
+t := t + dt;
+n := n + 1;
+s := s + dt;
+};
+
+(n = 100): {
+  n := 0;
+  fprint(fp, t , "," , red_total , "," , green_total, ",", red_total + green_total,"\n");
+  print(t , "," , red_total , "," , green_total, ",", red_total + green_total,"\n");
+}
+
+
+t >400:{
+  stop();
+}
+
+};
+
+
+
+foreach q in range 30 do
+
+ecoli( [x := rand(300) - 150, y := rand(300) - 150, theta := rand(360) ], program rk1() )
+
+end;
+
+foreach q in range 30 do
+
+ecoli( [x := rand(300) - 150, y := rand(300) - 150, theta  := rand(360) ], program rk0() )
+
+end;
